@@ -1,90 +1,87 @@
 # ApexTelemetry
 
-Server-side telemetry collector for ApexOrder 7 Days to Die servers.
+Mod-free telemetry collector for ApexOrder 7 Days to Die servers.
 
-## First milestone
+## Why the architecture changed
 
-The initial scaffold provides:
+The original proof of concept used a compiled `IModApi` DLL inside the server's `Mods` folder. Current 7DTD clients treat compiled code mods as client-required, which made connecting players install ApexTelemetry too. That is not acceptable for invisible server monitoring.
 
-- a dedicated-server `IModApi` entry point
-- stable player identity payloads
-- server-start and player-join events
-- signed HTTPS batches using HMAC-SHA256
-- a durable local JSONL retry queue
-- configuration kept outside source control
+The supported production design is now an **external Node.js agent**. It connects to the server's built-in Telnet interface, runs `lp`, converts the returned player counters into signed telemetry snapshots, and sends them to ApexOrder.
 
-The collector does not contain a Discord token and does not post directly to Discord. It sends reusable events to the ApexOrder API, which can power the website, leaderboards and Discord bot.
+Players install nothing.
+
+## Data collected
+
+The exact fields depend on the `lp` output exposed by the running 7DTD build, but the parser supports:
+
+- Steam/platform ID
+- player name
+- entity ID
+- zombie kills
+- player/PvP kills
+- deaths
+- score
+- level
+- game stage
+- health and ping
 
 ## Requirements
 
-- 7 Days to Die dedicated server
-- .NET Framework 4.8 targeting pack
-- game assemblies from `7DaysToDieServer_Data/Managed`
-
-The official ModAPI loads compiled C# code from a mod folder containing `ModInfo.xml`. Game assemblies must be referenced at build time but are not committed to this repository.
-
-## Build
-
-Set the managed-assembly directory and build:
-
-```powershell
-$env:SEVEN_DAYS_MANAGED = "C:\7DTD\7DaysToDieServer_Data\Managed"
-dotnet build -c Release
-```
-
-Linux example:
-
-```bash
-export SEVEN_DAYS_MANAGED=/path/to/7DaysToDieServer_Data/Managed
-dotnet build -c Release
-```
+- Node.js 20 or newer
+- 7DTD Telnet enabled
+- Telnet bound to localhost or a private network only
+- ApexOrder telemetry receiver and matching per-server API secret
 
 ## Install
 
-Create this folder on the dedicated server:
-
-```text
-Mods/ApexTelemetry/
+```bash
+cd /opt/ApexTelemetry
+git pull origin main
+cd agent
+cp config.example.json config.json
+nano config.json
+npm install
 ```
 
-Copy into it:
+Example configuration:
 
-```text
-ModInfo.xml
-ApexTelemetry.dll
-Config/telemetry.json
+```json
+{
+  "serverId": "apex-7dtd-main",
+  "apiEndpoint": "https://apexorder.uk/api/telemetry/v1/events",
+  "apiKey": "same-secret-as-apexorder",
+  "pollIntervalSeconds": 30,
+  "telnet": {
+    "host": "127.0.0.1",
+    "port": 8081,
+    "password": "your-7dtd-telnet-password",
+    "timeoutSeconds": 8
+  }
+}
 ```
 
-Create `Config/telemetry.json` from `Config/telemetry.example.json` and provide:
+Run with PM2:
 
-- the ApexOrder server UUID
-- the telemetry receiver URL
-- a unique long random API key
-
-The API key must match the secret configured for that server in the ApexOrder backend.
-
-## Event authentication
-
-Each request contains:
-
-```text
-X-Apex-Server
-X-Apex-Timestamp
-X-Apex-Signature
+```bash
+cd /opt/ApexTelemetry/agent
+pm2 start npm --name apex-7dtd-telemetry -- start
+pm2 save
 ```
 
-The signature is lowercase hexadecimal HMAC-SHA256 over:
+## Remove the old DLL mod
 
-```text
-<unix timestamp>.<raw JSON body>
+Delete the old server mod before restarting 7DTD:
+
+```bash
+rm -rf /path/to/7DaysToDieServer/Mods/ApexTelemetry
 ```
 
-## Current events
+This prevents the server from advertising ApexTelemetry as a required client mod.
 
-```text
-server.started
-player.joined
-player.spawned
-```
+## Security
 
-Planned next events include disconnects, deaths, zombie kills, PvP kills and periodic player-stat snapshots. Those handlers will be added only after verifying their signatures against the exact dedicated-server build in use.
+Do not expose the 7DTD Telnet port publicly. Bind or firewall it to localhost/private management addresses. The agent sends data to ApexOrder using timestamped HMAC-SHA256 signatures and never stores a Discord bot token.
+
+## Legacy prototype
+
+The old `.NET Framework` ModAPI source remains in the repository for reference only. It is not the recommended deployment path.

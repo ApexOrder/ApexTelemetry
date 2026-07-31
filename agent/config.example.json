@@ -1,0 +1,12 @@
+{
+  "serverId": "apex-7dtd-main",
+  "apiEndpoint": "https://apexorder.uk/api/telemetry/v1/events",
+  "apiKey": "replace-with-the-same-long-random-secret",
+  "pollIntervalSeconds": 30,
+  "telnet": {
+    "host": "127.0.0.1",
+    "port": 8081,
+    "password": "replace-with-your-7dtd-telnet-password",
+    "timeoutSeconds": 8
+  }
+}
