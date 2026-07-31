@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<xml>
+  <Name value="ApexTelemetry" />
+  <DisplayName value="Apex Telemetry" />
+  <Description value="Server-side player telemetry collector for ApexOrder." />
+  <Author value="ApexOrder" />
+  <Version value="0.1.0" />
+  <Website value="https://github.com/ApexOrder/ApexTelemetry" />
+</xml>
