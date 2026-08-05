@@ -5,5 +5,8 @@
   "apiKey": "replace-with-a-long-random-secret",
   "flushIntervalSeconds": 10,
   "requestTimeoutSeconds": 8,
-  "maxBatchSize": 50
+  "maxBatchSize": 50,
+  "profileClaimsEnabled": true,
+  "profileClaimBaseUrl": "https://apexorder.uk/api/claims/7dtd/start",
+  "profileClaimPrefix": "[ApexOrder] Claim your profile and stats by signing in with Steam:"
 }
