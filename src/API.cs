@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Web.Script.Serialization;
 
@@ -54,17 +55,95 @@ namespace ApexTelemetry
             var eventType = respawnReason == RespawnType.EnterMultiplayer || respawnReason == RespawnType.JoinMultiplayer
                 ? "player.joined"
                 : "player.spawned";
+            var identity = ReadIdentity(clientInfo);
 
             client.Enqueue(new TelemetryEvent
             {
                 type = eventType,
-                player = ReadIdentity(clientInfo),
+                player = identity,
                 data = new Dictionary<string, object>
                 {
                     ["respawnType"] = respawnReason.ToString(),
                     ["position"] = position.ToString()
                 }
             });
+
+            if (eventType == "player.joined") TryShowClaimMessage(clientInfo, identity);
+        }
+
+        private static void TryShowClaimMessage(ClientInfo clientInfo, PlayerIdentity identity)
+        {
+            if (config == null || !config.profileClaimsEnabled || identity == null || string.IsNullOrWhiteSpace(identity.steamId)) return;
+            if (string.IsNullOrWhiteSpace(config.profileClaimBaseUrl)) return;
+
+            try
+            {
+                var separator = config.profileClaimBaseUrl.Contains("?") ? "&" : "?";
+                var url = config.profileClaimBaseUrl + separator
+                    + "playerId=" + Uri.EscapeDataString(identity.steamId)
+                    + "&name=" + Uri.EscapeDataString(identity.name ?? string.Empty);
+                var message = (string.IsNullOrWhiteSpace(config.profileClaimPrefix)
+                    ? "[ApexOrder] Claim your profile and stats by signing in with Steam:"
+                    : config.profileClaimPrefix.Trim()) + " " + url;
+
+                if (!TrySendTargetedChat(clientInfo, message))
+                    Log.Out("[ApexTelemetry] Claim link for " + (identity.name ?? identity.steamId) + ": " + url);
+            }
+            catch (Exception error)
+            {
+                Log.Warning("[ApexTelemetry] Could not show profile claim message: " + error.Message);
+            }
+        }
+
+        private static bool TrySendTargetedChat(ClientInfo clientInfo, string message)
+        {
+            try
+            {
+                var gameManagerType = typeof(GameManager);
+                var instanceProperty = gameManagerType.GetProperty("Instance", BindingFlags.Public | BindingFlags.Static);
+                var instance = instanceProperty?.GetValue(null, null);
+                if (instance == null) return false;
+
+                var methods = gameManagerType.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                    .Where(method => method.Name.IndexOf("ChatMessage", StringComparison.OrdinalIgnoreCase) >= 0)
+                    .OrderBy(method => method.GetParameters().Length);
+
+                foreach (var method in methods)
+                {
+                    var parameters = method.GetParameters();
+                    var args = new object[parameters.Length];
+                    var usedMessage = false;
+                    var compatible = true;
+
+                    for (var index = 0; index < parameters.Length; index++)
+                    {
+                        var parameterType = parameters[index].ParameterType;
+                        if (parameterType == typeof(string) && !usedMessage)
+                        {
+                            args[index] = message;
+                            usedMessage = true;
+                        }
+                        else if (parameterType.IsInstanceOfType(clientInfo)) args[index] = clientInfo;
+                        else if (parameterType == typeof(string)) args[index] = string.Empty;
+                        else if (parameterType == typeof(int)) args[index] = -1;
+                        else if (parameterType == typeof(bool)) args[index] = false;
+                        else if (parameterType.IsEnum) args[index] = Enum.GetValues(parameterType).GetValue(0);
+                        else if (!parameterType.IsValueType) args[index] = null;
+                        else if (parameters[index].HasDefaultValue) args[index] = parameters[index].DefaultValue;
+                        else { compatible = false; break; }
+                    }
+
+                    if (!compatible || !usedMessage) continue;
+                    try
+                    {
+                        method.Invoke(instance, args);
+                        return true;
+                    }
+                    catch { }
+                }
+            }
+            catch { }
+            return false;
         }
 
         private static PlayerIdentity ReadIdentity(ClientInfo info)
