@@ -12,6 +12,9 @@ namespace ApexTelemetry
         public int flushIntervalSeconds { get; set; } = 10;
         public int requestTimeoutSeconds { get; set; } = 8;
         public int maxBatchSize { get; set; } = 50;
+        public bool profileClaimsEnabled { get; set; } = true;
+        public string profileClaimBaseUrl { get; set; } = "https://apexorder.uk/api/claims/7dtd/start";
+        public string profileClaimPrefix { get; set; } = "[ApexOrder] Claim your profile and stats by signing in with Steam:";
     }
 
     public sealed class TelemetryEvent
